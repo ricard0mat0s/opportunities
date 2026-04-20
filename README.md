@@ -5,5 +5,5 @@ A repository focus on share opportunities to software engineers, from interships
 - Google SWE
 
 ### Startup
-If you want to follow this path, my first recommendation is to start small, and try to solve very specific problems, because all big products that we exist over there, starts being a product to solve specific problems.
+If you want to follow this path, my first recommendation is to start small, and try to solve very specific problems, because all big products that we exist over there, starts being a product to solve specific problems. So, your first objective as a CEO of a startup is to deliver your first MVP.
 - Google Startups
