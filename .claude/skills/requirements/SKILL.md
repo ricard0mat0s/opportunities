@@ -2,8 +2,8 @@
 name: requirements
 description: Brainstorm and capture user requirements for a feature area. It produces structured, numbered requirements in docs/requirements/ that serve as the foundation for design specs and test plans. It focuses on the "what and why" from the user's perspective, not on technology. It generates BDD feature files from the requirements.
 user_invocable: true
-allowed-tools: Bash(git *), Bash(gh *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__linear-server__authenticate
-argument-hint: "[feature area or Linear ticket, e.g., 'user exports' or <TEAM>-123]"
+allowed-tools: Bash(git *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__github__issue_read
+argument-hint: "[feature area or GitHub issue, e.g., 'user exports' or #123]"
 ---
 
 # Requirements
@@ -79,7 +79,7 @@ digraph requirements {
 ## Understanding the feature
 
 - Check the current project state first (existing requirements files, docs, recent commits, relevant code).
-- If `$ARGUMENTS` contains a Linear ticket (e.g., `<TEAM>-123`), use the Linear MCP tools to fetch the issue details.
+- If `$ARGUMENTS` contains a GitHub issue number (e.g., `#123`), use `mcp__github__issue_read(method: "get", ...)` to fetch the issue details.
 - If a requirements file for this topic already exists, read it so you understand what has been captured and avoid duplication.
 - Before asking detailed questions, assess scope: if the request describes multiple independent feature areas, flag this immediately. Each area should get its own requirements file. Help the user decompose first, then start with the first area.
 - If the project is too large for a single requirements file, help the user break it into sub-areas. Each sub-area gets its own file and its own brainstorming cycle.

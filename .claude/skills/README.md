@@ -5,6 +5,9 @@ Each one is a [Claude Code skill](https://docs.claude.com/en/docs/claude-code/sk
 
 → **Talk:** [laguiar.dev/workflow](https://laguiar.dev/workflow)
 
+> Imported from [lucastamoios/skills](https://github.com/lucastamoios/skills) and adapted
+> to use the GitHub MCP tools (issues, PRs, reviews) in place of `gh` CLI and Linear.
+
 ## The loop
 
 ```
@@ -39,7 +42,7 @@ git clone git@github.com:lucastamoios/skills.git .claude/skills
 | `requirements` | Capture numbered, technology-free user requirements; outputs `.md` and BDD `.feature` files. |
 | `design-spec` | Capture technical design decisions, each traced back to a requirement. |
 | `plan` | Break work into ordered steps with test cases tied to requirements. |
-| `create-issues` | Slice the plan into self-contained ~250-LOC Linear issues with the spec embedded. |
+| `create-issues` | Slice the plan into self-contained ~250-LOC GitHub issues with the spec embedded. |
 | `next-issue` | Pick the next unblocked issue, create a branch and worktree, install deps. |
 | `code-tdd` | Implement outside-in: red → green → refactor, every cycle traceable to a requirement. |
 | `code-review` | Review a diff for bugs, logic errors, security, edge cases, requirements alignment. |

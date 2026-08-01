@@ -2,7 +2,7 @@
 name: design-spec
 description: Brainstorm and capture technical design decisions for a feature area. It takes user requirements from docs/requirements/ as input and produces a design spec in docs/design/ where every decision traces back to specific requirement numbers. It focuses on the "how" from an engineering perspective.
 user_invocable: true
-allowed-tools: Bash(git *), Bash(gh *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__linear-server__authenticate
+allowed-tools: Bash(git *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__github__issue_read
 argument-hint: "<topic matching a requirements file, e.g., 'authorization' for docs/requirements/authorization.md>"
 ---
 

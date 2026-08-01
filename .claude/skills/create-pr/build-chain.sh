@@ -9,8 +9,15 @@
 # Exit codes:
 #   0 - success
 #   1 - error (on main, or could not determine chain)
+#
+# Optional env var PR_BASE_MAP: JSON object mapping branch -> base, precomputed
+# by the caller via mcp__github__list_pull_requests (head filter) since this
+# script has no GitHub API access of its own. Falls back to git tracking
+# config, then "main".
 
 set -euo pipefail
+
+pr_base_map="${PR_BASE_MAP:-{}}"
 
 current_branch=$(git branch --show-current)
 
@@ -23,8 +30,8 @@ chain='[]'
 branch="$current_branch"
 
 while [ "$branch" != "main" ]; do
-    # Try to get base from existing PR
-    base=$(gh pr view "$branch" --json baseRefName -q .baseRefName 2>/dev/null || true)
+    # Try to get base from the precomputed PR base map
+    base=$(echo "$pr_base_map" | jq -r --arg b "$branch" '.[$b] // empty')
 
     # Fallback to git tracking config
     if [ -z "$base" ]; then

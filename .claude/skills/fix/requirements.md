@@ -4,15 +4,15 @@ Last updated: 2026-04-08
 
 ## Context
 
-The `/fix` skill is a bug-fixing workflow that takes any error report (Sentry link, Linear issue, pasted stacktrace, or plain description), systematically diagnoses the root cause, writes a failing test that reproduces the bug, and fixes it using RED-GREEN-REFACTOR. It integrates with Sentry and Linear when available, and includes preventive measures to reduce the chance of recurrence.
+The `/fix` skill is a bug-fixing workflow that takes any error report (Sentry link, GitHub issue, pasted stacktrace, or plain description), systematically diagnoses the root cause, writes a failing test that reproduces the bug, and fixes it using RED-GREEN-REFACTOR. It integrates with Sentry and GitHub Issues when available, and includes preventive measures to reduce the chance of recurrence.
 
 ## Requirements
 
 ### Input and Context Gathering
 
-1. The skill accepts a free-form argument that can contain any combination of: a Sentry issue URL, a Linear issue identifier, a pasted stacktrace, or a plain text description of the problem.
+1. The skill accepts a free-form argument that can contain any combination of: a Sentry issue URL, a GitHub issue number, a pasted stacktrace, or a plain text description of the problem.
 2. When a Sentry issue URL is provided, the skill fetches the full issue details via Sentry MCP - including stacktrace, error message, breadcrumbs, tags, environment, release, frequency, and affected user count.
-3. When a Linear issue identifier is provided, the skill fetches the issue details via Linear MCP.
+3. When a GitHub issue number is provided, the skill fetches the issue details via the GitHub MCP tools.
 4. Regardless of input source, the skill explores the relevant parts of the codebase (files referenced in the stacktrace, related tests, recent commits) and reads any existing requirements and design docs that relate to the affected area.
 5. The skill gathers as much context as possible from all available sources before starting diagnosis. It does not limit itself to a single source.
 
@@ -33,7 +33,7 @@ The `/fix` skill is a bug-fixing workflow that takes any error report (Sentry li
 
 ### Size Gate
 
-15. If the fix would require more than 800 lines of code changes, the skill stops and creates Linear issues to break the work into smaller pieces instead of implementing the fix directly.
+15. If the fix would require more than 800 lines of code changes, the skill stops and creates GitHub issues to break the work into smaller pieces instead of implementing the fix directly.
 
 ### Sentry-specific Behavior
 

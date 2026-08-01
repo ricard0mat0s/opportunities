@@ -337,7 +337,7 @@ All prompts use `AskUserQuestion`.
 - Does not check whether high-churn files lack any map leaf coverage.
 - Does not edit the actual `docs/requirements/*.md` or `docs/design/*.md` files - the registries point at them, the files themselves are at HEAD and authoritative.
 - Does not auto-edit map leaves when a requirement/design they reference is deleted - it flags the stale reference in the summary.
-- Does not sync against external sources (Linear, other branches). The diff is always local-git from the stored SHA to HEAD.
+- Does not sync against external sources (GitHub issues, other branches). The diff is always local-git from the stored SHA to HEAD.
 - Does not run non-interactively. CI mode is future work; when added, every interactive prompt becomes a hard failure that the PR author resolves locally.
 
 ## Style anti-patterns to avoid

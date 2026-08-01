@@ -1,9 +1,9 @@
 ---
 name: code-tdd
-description: Implement features and bugfixes using strict outside-in TDD. Each cycle traces back to requirements and design docs when available. It includes a deliberate refactoring phase and generates integration tests when a vertical slice is complete. It wires up BDD step definitions when feature files exist. It can receive a Linear issue as input, rebuilds docs (requirements, design, plan) from the issue into the repo before coding, and graduates them into permanent knowledge after the implementation is complete.
+description: Implement features and bugfixes using strict outside-in TDD. Each cycle traces back to requirements and design docs when available. It includes a deliberate refactoring phase and generates integration tests when a vertical slice is complete. It wires up BDD step definitions when feature files exist. It can receive a GitHub issue as input, rebuilds docs (requirements, design, plan) from the issue into the repo before coding, and graduates them into permanent knowledge after the implementation is complete.
 user_invocable: true
-allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write, mcp__linear-server__get_issue, mcp__linear-server__save_issue
-argument-hint: "[<TEAM>-123 (Linear issue), task description, plan step reference, or requirement reference]"
+allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write, mcp__github__issue_read, mcp__github__issue_write
+argument-hint: "[#123 (GitHub issue), task description, plan step reference, or requirement reference]"
 ---
 
 # Code TDD
@@ -20,19 +20,19 @@ No production code without a failing test first. If you wrote code before the te
 
 `$ARGUMENTS` can be one of several things. Determine which path to follow:
 
-### Path A: Linear issue (e.g., `<TEAM>-123`)
+### Path A: GitHub issue (e.g., `#123`)
 
-If `$ARGUMENTS` matches a Linear issue identifier:
+If `$ARGUMENTS` matches a GitHub issue number:
 
-1. Fetch the issue using `get_issue(id: "<TEAM>-123")`.
+1. Fetch the issue using `mcp__github__issue_read(method: "get", owner, repo, issue_number: 123)`.
 2. The issue body contains structured sections: Requirements, Design Decisions, Tasks, Traceability, and Acceptance Criteria. Parse these sections - they are your source of truth.
-3. **Create a branch and worktree.** Extract the issue number (e.g., `4280` from `<TEAM>-4280`). Check if branch `<username>/<prefix>-<number>` already exists (where `<prefix>` is the lowercased team key). If it does not, create it from the current default branch. Then create a git worktree for it so you work in isolation:
+3. **Create a branch and worktree.** Check if branch `<username>/issue-<number>` already exists. If it does not, create it from the current default branch. Then create a git worktree for it so you work in isolation:
    ```bash
-   git worktree add /tmp/<repo>-worktrees/<prefix>-<number> -b <username>/<prefix>-<number>
+   git worktree add /tmp/<repo>-worktrees/issue-<number> -b <username>/issue-<number>
    ```
    If the branch already exists, check it out in a worktree instead:
    ```bash
-   git worktree add /tmp/<repo>-worktrees/<prefix>-<number> <username>/<prefix>-<number>
+   git worktree add /tmp/<repo>-worktrees/issue-<number> <username>/issue-<number>
    ```
    All subsequent work (file reads, edits, test runs) happens inside the worktree directory.
 4. **Rebuild docs from the issue into the repo.** The `/create-issues` skill embeds requirements, design, and plan content into the issue body and deletes the repo docs files. Rebuild them now so they are available as reference during implementation:
@@ -43,9 +43,9 @@ If `$ARGUMENTS` matches a Linear issue identifier:
    - If any of these files already exist in the worktree, read them first and merge the issue content in (the issue is the source of truth for any conflicts).
    - Derive `<topic>` from the issue title or the initiative name. Keep it consistent with how the original docs were named (check `docs/index.md` or git log for clues).
    - Commit these docs files before starting implementation so the rebuild is a clean, separate commit.
-5. Note the issue identifier - you will need it in Step 8 to graduate docs after implementation.
+5. Note the issue number - you will need it in Step 8 to graduate docs after implementation.
 
-### Path B: Repo docs (no Linear issue)
+### Path B: Repo docs (no GitHub issue)
 
 If `$ARGUMENTS` is a plain description, a plan step reference, or a requirement reference:
 
@@ -101,7 +101,7 @@ Then the assertion itself must:
 - Have a clear name that describes the expected behavior.
 - Use real code, not mocks (unless mocking is unavoidable, like external APIs).
 - Put imports at the top of the file, not inside the test body.
-- Name and describe the behavior, not its provenance. Do not write `# Implements REQ N`, `# COM-XXXX`, or any issue/requirement reference in the test docstring or comments. The link from a test to a requirement lives in the PR description, the commit message, and the Linear issue body. The test's name and assertions describe the behavior:
+- Name and describe the behavior, not its provenance. Do not write `# Implements REQ N`, `# #123`, or any issue/requirement reference in the test docstring or comments. The link from a test to a requirement lives in the PR description, the commit message, and the GitHub issue body. The test's name and assertions describe the behavior:
 
 ```python
 def test_only_org_admins_can_export():
@@ -194,9 +194,9 @@ If you found existing `.feature` files related to the current task (either in th
 
 If no `.feature` files exist for this task, skip this step entirely. Do not create them here (that is the requirements skill's job).
 
-## Step 7: Sync docs after implementation (Linear issue path only)
+## Step 7: Sync docs after implementation (GitHub issue path only)
 
-If the input was a Linear issue (Path A from Step 1), the docs were rebuilt into the repo at the start (Step 1, item 4). After all implementation and tests are complete, verify they are still accurate:
+If the input was a GitHub issue (Path A from Step 1), the docs were rebuilt into the repo at the start (Step 1, item 4). After all implementation and tests are complete, verify they are still accurate:
 
 1. **Review the docs you rebuilt** in `docs/requirements/<topic>.md` and `docs/design/<topic>.md`. If any requirements or design decisions changed during implementation (e.g., you discovered a requirement was wrong, or a design decision needed adjustment), update the docs to reflect what was actually built.
 2. **Delete the plan file** from `docs/plans/<topic>.md`. The plan was consumed by the implementation and the code is the record now.

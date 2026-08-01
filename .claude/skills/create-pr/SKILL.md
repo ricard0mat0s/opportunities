@@ -2,8 +2,8 @@
 name: create-pr
 description: Create or update a GitHub PR for the current branch. It handles branch creation from main, rebases the full branch chain up to main, pushes with --force-with-lease, and generates a PR with a smart title and description focused on business rules and architecture changes. It can also screenshot the affected UI if the change touches frontend code.
 user_invocable: true
-allowed-tools: Bash(git *), Bash(gh *), Bash(.claude/skills/create-pr/*), Bash(npx playwright *), Bash(just *), Bash(docker *), Bash(curl *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__linear-server__authenticate
-argument-hint: "[<TEAM>-123 (optional Linear ticket number, only when on main)]"
+allowed-tools: Bash(git *), Bash(.claude/skills/create-pr/*), Bash(npx playwright *), Bash(just *), Bash(docker *), Bash(curl *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__create_pull_request, mcp__github__update_pull_request, mcp__github__search_issues, mcp__github__add_issue_comment
+argument-hint: "[#123 (optional GitHub issue number, only when on main)]"
 ---
 
 # Create PR
@@ -27,23 +27,23 @@ CURRENT_BRANCH=$(git branch --show-current)
 
 ## Step 1: Branch creation (only from main)
 
-You need to create a new branch with the pattern `<username>/<prefix>-<ticket-number>` (where `<prefix>` is the lowercased Linear team key).
+You need to create a new branch with the pattern `<username>/issue-<number>`.
 
-1. **Get the ticket number:**
-   - If `$ARGUMENTS` contains a ticket number (e.g., `<TEAM>-123`), extract the number from it.
-   - If no argument was provided, use the Linear MCP tools to fetch the user's currently assigned tickets. Present them to the user and let them pick one.
+1. **Get the issue number:**
+   - If `$ARGUMENTS` contains an issue number (e.g., `#123`), extract the number from it.
+   - If no argument was provided, use `mcp__github__search_issues(query: "repo:<owner>/<repo> is:issue is:open assignee:@me")` to fetch the user's currently assigned issues. Present them to the user and let them pick one.
 
 2. **Create the branch:**
-   - Check if `<username>/<prefix>-<number>` already exists locally or on the remote (`git branch -a | grep <username>/<prefix>-<number>`).
-   - If it does not exist, run `git checkout -b <username>/<prefix>-<number>`.
-   - If it already exists, ask the user for a short suffix, then run `git checkout -b <username>/<prefix>-<number>-<suffix>`.
+   - Check if `<username>/issue-<number>` already exists locally or on the remote (`git branch -a | grep <username>/issue-<number>`).
+   - If it does not exist, run `git checkout -b <username>/issue-<number>`.
+   - If it already exists, ask the user for a short suffix, then run `git checkout -b <username>/issue-<number>-<suffix>`.
 
 3. **Stop here.** Tell the user which branch was created. They will make commits and invoke the skill again later.
 
 ## Step 2: Check for an existing PR
 
-```bash
-gh pr view --json number,url,title,state,baseRefName 2>/dev/null
+```
+mcp__github__list_pull_requests(owner, repo, head: "<owner>:<CURRENT_BRANCH>", state: "all", fields: ["number","title","state","base"])
 ```
 
 - **If a PR exists and it is open:** Ask the user whether they want to "update it (re-push and update the description)" or "skip".
@@ -60,14 +60,14 @@ The correct PR base is not always `main`. If the current branch is part of a sta
 
 Use this algorithm to find the correct base:
 
-1. **If an existing PR was found in Step 2**, use its `baseRefName` as the base. It was already set correctly (or the user explicitly chose it).
+1. **If an existing PR was found in Step 2**, use its `base` ref as the base. It was already set correctly (or the user explicitly chose it).
 
-2. **Otherwise, detect the stack.** List all local branches that share the same naming pattern (e.g., `<username>/<prefix>-*` for a branch named `<username>/<prefix>-4315`). For each candidate branch, check whether its tip commit message appears in the current branch's history:
+2. **Otherwise, detect the stack.** List all local branches that share the same naming pattern (e.g., `<username>/issue-*` for a branch named `<username>/issue-4315`). For each candidate branch, check whether its tip commit message appears in the current branch's history:
 
    ```bash
    # Get all sibling branches (same prefix pattern)
    CURRENT_BRANCH=$(git branch --show-current)
-   PREFIX=$(echo "$CURRENT_BRANCH" | sed 's/[0-9]*$//')  # e.g., "<username>/<prefix>-"
+   PREFIX=$(echo "$CURRENT_BRANCH" | sed 's/[0-9]*$//')  # e.g., "<username>/issue-"
    SIBLINGS=$(git branch --list "${PREFIX}*" | grep -v "^\*" | sed 's/^[ +]*//')
 
    # For each sibling, check if its tip is in our history (by commit message, since rebases change SHAs)
@@ -99,11 +99,13 @@ If there are no commits ahead, tell the user "There is nothing to PR because the
 
 ### 4a: Build the chain
 
+Before running the script, look up any existing PRs for the sibling branches you found in 3a via `mcp__github__list_pull_requests(head: "<owner>:<branch>")` for each one, and assemble a `branch -> base` JSON map from the results.
+
 ```bash
-.claude/skills/create-pr/build-chain.sh
+PR_BASE_MAP='<the JSON map, or {} if none found>' .claude/skills/create-pr/build-chain.sh
 ```
 
-This outputs a JSON array of `{"branch", "base"}` pairs, ordered from the branch closest to main down to the current branch.
+This outputs a JSON array of `{"branch", "base"}` pairs, ordered from the branch closest to main down to the current branch. The script has no GitHub API access itself, so `PR_BASE_MAP` is how known PR bases get in; anything not in the map falls back to git tracking config, then `main`.
 
 ### 4b: Rebase and push each branch
 
@@ -143,7 +145,7 @@ If you cannot tell which is right, ask the user via AskUserQuestion.
    npx playwright screenshot --browser chromium "$DEV_URL/<inferred-path>" /tmp/pr-screenshot.png
    ```
 
-4. **Upload the screenshot** and get a URL you can embed in the PR description. Use `gh` to upload it as part of the PR body (you can include it as a Markdown image in the description).
+4. **Attach the screenshot.** The GitHub MCP tools have no image-upload endpoint, so you cannot embed it directly. After the PR exists (Step 6), post a `mcp__github__add_issue_comment` noting the screenshot is available at `/tmp/pr-screenshot.png` and ask the user to drag it into the PR conversation, since only a human (or `gh`, if present on their machine) can upload the binary asset.
 
 ## Step 6: Create or update the PR
 
@@ -187,12 +189,13 @@ Focus on what is deeply being changed, not surface-level file edits. Think about
 ### Create or update the PR
 
 - **For a new PR:**
-  ```bash
-  gh pr create --title "<title>" --base "<base_branch>" --body "<description>" --assignee "@me"
   ```
+  mcp__github__create_pull_request(owner, repo, title: "<title>", head: "<CURRENT_BRANCH>", base: "<base_branch>", body: "<description>")
+  ```
+  Then assign yourself with `mcp__github__issue_write(method: "update", owner, repo, issue_number: <pr_number>, assignees: ["<your-username>"])` (a PR is an issue for assignment purposes).
 - **For an existing PR:**
-  ```bash
-  gh pr edit --title "<title>" --body "<description>"
+  ```
+  mcp__github__update_pull_request(owner, repo, pullNumber: <number>, title: "<title>", body: "<description>")
   ```
 
 ## Step 7: Report
@@ -204,7 +207,7 @@ Print the PR URL and a one-line confirmation. Nothing more.
 - A push failure is a hard stop. Do not retry and do not try workarounds. Just tell the user and stop.
 - Conflict resolution is best-effort. Try to resolve conflicts, but if you cannot, abort the rebase and ask the user.
 - Never create draft PRs. They should always be ready for review.
-- Always assign yourself with `--assignee "@me"`.
+- Always assign yourself to the PR after creating it.
 - Do not use em-dashes. Use hyphens, commas, or parentheses instead.
 - When on main, only create the branch and stop. Do not proceed to PR creation.
 - If there are no commits ahead of the base, there is nothing to PR. Stop and tell the user.

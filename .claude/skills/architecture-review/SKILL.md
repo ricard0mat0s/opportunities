@@ -2,7 +2,7 @@
 name: architecture-review
 description: Review a PR or diff for architectural quality - SOLID principles, codebase consistency, dependency direction, error handling, data flow, test architecture, performance, and security. It reads the code review output for context, checks alignment with design docs, and produces actionable findings for the coding agent to fix.
 user_invocable: true
-allowed-tools: Bash(git *), Bash(gh *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__linear-server__save_issue
+allowed-tools: Bash(git *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__github__pull_request_read, mcp__github__issue_write
 argument-hint: "[PR number, branch name, or 'current' to review the current diff]"
 ---
 
@@ -16,7 +16,7 @@ Argument: `$ARGUMENTS`
 
 ## Step 1: Load context
 
-1. **Identify the PR or diff.** If `$ARGUMENTS` is a PR number, run `gh pr view $ARGUMENTS --json baseRefName,headRefName,title,body` and `gh pr diff $ARGUMENTS`. If it is "current" or empty, use `git diff` against the base branch. If it is a branch name, diff against main.
+1. **Identify the PR or diff.** If `$ARGUMENTS` is a PR number, call `mcp__github__pull_request_read(method: "get", ...)` for the metadata (base/head refs, title, body) and `mcp__github__pull_request_read(method: "get_diff", ...)` for the diff. If it is "current" or empty, use `git diff` against the base branch. If it is a branch name, diff against main.
 2. **Understand the sequence.** This skill runs after the code review. The coding agent has already applied the code review's findings, so the code you are reviewing has already been corrected for correctness issues. Your job is to look at the architectural quality of the result.
 3. **Read project documentation.** Check for:
    - `docs/design/<topic>.md` - design decisions that the code should align with
@@ -122,18 +122,18 @@ For each finding, assign one of two severity levels:
 For each "must fix" finding that requires refactoring:
 
 - If the refactoring keeps the PR under 400-500 total LOC and the issue was introduced by this PR, it should be fixed in the same PR. Include clear instructions for the coding agent.
-- If the refactoring is larger or the issue predates this PR, create a Linear issue for it instead:
+- If the refactoring is larger or the issue predates this PR, create a GitHub issue for it instead:
   ```
-  save_issue(
+  mcp__github__issue_write(
+    method: "create",
+    owner, repo,
     title: "<description of the refactoring>",
-    team: "<your-linear-team>",
     labels: ["agent issue"],
-    assignee: "me",
-    description: "<what needs to change, why, and which files are affected>",
-    priority: 4
+    assignees: ["me"],
+    body: "<what needs to change, why, and which files are affected>"
   )
   ```
-  Note the created issue identifier in the review summary.
+  Note the created issue number and URL in the review summary.
 
 ## Step 5: Produce output
 
@@ -158,7 +158,7 @@ A higher-level section covering:
 1. **Overall assessment** (1-2 sentences): Is this architecturally sound, or does it have structural issues?
 2. **Broader observations:** Patterns that span multiple files or are not tied to a specific line. For example: "The new service mixes data access and business logic, which is inconsistent with how other services in the project are structured."
 3. **Design document alignment:** If design docs were found, note any deviations.
-4. **Follow-up issues created:** If any Linear issues were created for larger refactoring, list them here.
+4. **Follow-up issues created:** If any GitHub issues were created for larger refactoring, list them here.
 
 ## Project-specific patterns
 
@@ -190,7 +190,7 @@ If no file exists, the skill uses only the general architectural patterns from S
 - **Code review is already applied.** The code you see has already been corrected for correctness issues. Focus on architectural quality.
 - **Be actionable.** Every finding must tell the reader what to do, not just what is wrong.
 - **Two severity levels only.** "Must fix" or "recommendation." No ambiguity.
-- **Small refactors in the same PR.** If the fix keeps the PR under 400-500 LOC and the issue was introduced by the PR, include it. Otherwise, create a Linear issue.
+- **Small refactors in the same PR.** If the fix keeps the PR under 400-500 LOC and the issue was introduced by the PR, include it. Otherwise, create a GitHub issue.
 - **Read the broader context.** Do not review the diff in isolation. Understand the module, its callers, and its dependencies.
 - **Check design docs.** If they exist, check alignment. If the code deviates, flag it.
 - **Do not use em-dashes.** Use hyphens, commas, or parentheses instead.

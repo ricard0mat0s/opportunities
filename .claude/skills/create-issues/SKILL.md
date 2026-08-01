@@ -1,14 +1,14 @@
 ---
 name: create-issues
-description: Split requirements, design specs, and plans into self-contained Linear issues targeting ~200-300 LOC each. It reads from the project's docs/requirements/, docs/design/, and docs/plans/, creates issues with the full spec embedded in the body, tags them with "agent issue", and creates an epic parent issue when more than two issues are generated. It deletes the repo docs files after the issues are created.
+description: Split requirements, design specs, and plans into self-contained GitHub issues targeting ~200-300 LOC each. It reads from the project's docs/requirements/, docs/design/, and docs/plans/, creates issues with the full spec embedded in the body, tags them with "agent issue", and creates a parent issue with native sub-issues when more than two issues are generated. It deletes the repo docs files after the issues are created.
 user_invocable: true
-allowed-tools: Bash(git *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__linear-server__save_issue, mcp__linear-server__get_issue, mcp__linear-server__list_issues
+allowed-tools: Bash(git *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__github__issue_write, mcp__github__issue_read, mcp__github__list_issues, mcp__github__sub_issue_write
 argument-hint: "[initiative or plan name, e.g., 'authorization-export' or path to plan file]"
 ---
 
 # Create Issues
 
-This skill reads the requirements, design specs, and plans from the project repo and splits them into self-contained Linear issues. Each issue targets ~200-300 lines of implementation code, contains its own requirements, design decisions, and tasks directly in the body, and is tagged with "agent issue."
+This skill reads the requirements, design specs, and plans from the project repo and splits them into self-contained GitHub issues. Each issue targets ~200-300 lines of implementation code, contains its own requirements, design decisions, and tasks directly in the body, and is tagged with "agent issue."
 
 Argument: `$ARGUMENTS`
 
@@ -51,37 +51,39 @@ Present the proposed grouping to the user:
 
 Wait for approval before creating anything.
 
-## Step 4: Create the epic parent issue (if more than 2 issues)
+## Step 4: Create the parent issue (if more than 2 issues)
 
-If you are creating more than two issues, first create a parent issue that serves as the epic:
+If you are creating more than two issues, first create a parent issue that groups them via GitHub's native sub-issue hierarchy:
 
 ```
-save_issue(
+mcp__github__issue_write(
+  method: "create",
+  owner, repo,
   title: "<Initiative Name>",
-  team: "<your-linear-team>",
-  description: "<overview>",
+  body: "<overview>",
   labels: ["agent issue"],
-  assignee: "me",
-  priority: 3
+  assignees: ["me"]
 )
 ```
 
-The epic description should contain:
+Note the returned `id` (internal, not the issue number - needed later for `sub_issue_write`) and `number`.
+
+The parent's body should contain:
 - A summary of the initiative and its overall goal.
-- The full list of sub-issues as a checklist with markdown links, updated after creation with actual identifiers and URLs (e.g., `- [ ] [<TEAM>-123](https://linear.app/.../<TEAM>-123): Title (~200 LOC)`).
+- The full list of sub-issues as a checklist with markdown links, updated after creation with actual numbers and URLs (e.g., `- [ ] #124: Title (~200 LOC)`).
 - The expected total scope.
 
-If you are creating one or two issues, skip the epic.
+If you are creating one or two issues, skip the parent and create them as standalone issues.
 
 ## Step 5: Create the issues
 
-For each issue in the grouping, create a Linear issue with this body structure:
+For each issue in the grouping, create a GitHub issue with this body structure:
 
 ```markdown
 ## Requirements
 
 <The specific requirements this issue addresses, copied verbatim from the requirements file.>
-<Use unordered list with bold REQ numbers to prevent Linear from auto-renumbering.>
+<Use unordered list with bold REQ numbers for consistent traceability across issues.>
 <Format: "- **REQ 1.** The system must..." instead of "1. The system must...">
 
 ## Design Decisions
@@ -113,46 +115,36 @@ For each issue in the grouping, create a Linear issue with this body structure:
 
 ## Notes
 
-<Any additional context, dependencies on other issues, or things to watch out for.>
+<Any additional context, dependencies on other issues (e.g., "Blocked by #123" since GitHub has no native blocker field), or things to watch out for.>
 ```
 
 For each issue:
 
 ```
-save_issue(
+mcp__github__issue_write(
+  method: "create",
+  owner, repo,
   title: "<short descriptive title, no conventional commit prefix>",
-  team: "<your-linear-team>",
-  description: "<the structured body above>",
+  body: "<the structured body above>",
   labels: ["agent issue"],
-  assignee: "me",
-  parentId: "<epic issue identifier, only if epic was created>",
-  priority: 3
+  assignees: ["me"]
 )
 ```
 
-If there are dependencies between issues (issue B needs code from issue A), set them:
+If a parent issue was created, add each new issue as its sub-issue right after creating it:
 
 ```
-save_issue(id: "<issue B>", blockedBy: ["<issue A identifier>"])
-```
-
-If an epic was created, update its description to include the actual issue identifiers in the checklist.
-
-After all issues are created, add links between them so they are easy to navigate. For each sub-issue, add a link to the epic. For each epic, add links to all sub-issues:
-
-```
-save_issue(
-  id: "<sub-issue identifier>",
-  links: [{"url": "<epic Linear URL>", "title": "Epic: <epic title>"}]
+mcp__github__sub_issue_write(
+  method: "add",
+  owner, repo,
+  issue_number: <parent issue number>,
+  sub_issue_id: <the child's internal id from its create response>
 )
 ```
 
-```
-save_issue(
-  id: "<epic identifier>",
-  links: [{"url": "<sub-issue Linear URL>", "title": "<sub-issue title>"}]
-)
-```
+If there are dependencies between issues (issue B needs code from issue A), note it in issue B's body Notes section as `Blocked by #<A>` (GitHub has no native dependency field, so this is a text convention that `next-issue` and `autopilot` parse).
+
+If a parent issue was created, update its body to include the actual issue numbers and URLs in the checklist.
 
 ## Step 6: Delete the repo docs files
 
@@ -165,33 +157,33 @@ After all issues are created successfully, delete the source files from the repo
 - Update the project's `docs/index.md` to remove the entries for the deleted files.
 - Commit the deletions.
 
-The content now lives in the Linear issues. When each issue is completed, `/code-tdd` will move the requirements, design, and plan content back into the repo docs.
+The content now lives in the GitHub issues. When each issue is completed, `/code-tdd` will move the requirements, design, and plan content back into the repo docs.
 
 ## Step 7: Report
 
 Print a summary:
 
-> "Created N issues in Linear:
-> - <TEAM>-XXXX: <title> (~250 LOC)
-> - <TEAM>-YYYY: <title> (~200 LOC)
+> "Created N issues:
+> - #124: <title> (~250 LOC)
+> - #125: <title> (~200 LOC)
 > ...
-> [Epic: <TEAM>-ZZZZ: <name> (<url>)]
-> 
+> [Parent: #123: <name> (<url>)]
+>
 > Source files have been deleted from the repo."
 
-Include the Linear URLs so the user can review them.
+Include the issue URLs so the user can review them.
 
 ## Rules
 
 - **Self-contained issues.** Every issue must have its own requirements, design, and tasks in the body. No "see file X" or "see issue Y" references for essential information.
 - **Target ~200-300 LOC.** Test code counts as only 50-100 LOC regardless of actual size.
 - **One concern per issue.** Do not mix unrelated features or areas.
-- **Outside-in order.** Mark dependencies between issues when they exist.
-- **Always tag with "agent issue."** The label already exists in Linear.
-- **Epic for 3+ issues only.** Create a parent issue when there are more than two sub-issues. Sub-issues use `parentId` to link to the epic.
+- **Outside-in order.** Mark dependencies between issues when they exist, using the `Blocked by #N` text convention.
+- **Always tag with "agent issue."** Create the label first via the repo's label settings if it does not already exist.
+- **Parent issue for 3+ issues only.** Create a parent issue when there are more than two sub-issues, and link each with `sub_issue_write`.
 - **Delete repo files after creation.** The issues are the source of truth now.
 - **Ask before creating.** Always present the grouping and get user approval first.
 - **Do not use em-dashes.** Use hyphens, commas, or parentheses instead.
 - **Requirement completeness check.** Before creating each issue, verify that every requirement referenced in any design decision ("Addresses: REQ X, Y") is listed in the Requirements section of that issue. If a design decision says it addresses REQ 21 but REQ 21 is not in the requirements list, add it.
-- **Use bold REQ format.** Requirements must use `- **REQ N.** text` format (unordered list with bold prefix) to prevent Linear from auto-renumbering.
-- **No title duplication in epic checklist.** Linear auto-renders issue links with the title, so the epic checklist should use `- [ ] [<TEAM>-123](url) (~N LOC)` without repeating the title text.
+- **Use bold REQ format.** Requirements must use `- **REQ N.** text` format (unordered list with bold prefix) for consistent traceability.
+- **No title duplication in parent checklist.** The parent's checklist should use `- [ ] #123 (~N LOC)` and let GitHub's autolinking render the title, without repeating the title text.

@@ -2,7 +2,7 @@
 name: code-review
 description: Review a PR or diff for bugs, logic errors, security issues, edge cases, test quality, and requirements alignment. It uses an agentic approach (dynamically investigate suspicious patterns) backed by a checklist for completeness. It loads project-specific learnings from codebase-learnings.json filtered by area tags.
 user_invocable: true
-allowed-tools: Bash(git *), Bash(gh *), Bash(jq *), Read, Grep, Glob, Agent, AskUserQuestion
+allowed-tools: Bash(git *), Bash(jq *), Read, Grep, Glob, Agent, AskUserQuestion, mcp__github__pull_request_read
 argument-hint: "[PR number, branch name, or 'current' to review the current diff]"
 ---
 
@@ -20,7 +20,7 @@ Do NOT delegate to any superpowers agents or skills (superpowers:code-reviewer, 
 
 ## Step 1: Load context
 
-1. **Identify the PR or diff.** If `$ARGUMENTS` is a PR number, run `gh pr view $ARGUMENTS --json baseRefName,headRefName,title,body` and `gh pr diff $ARGUMENTS`. If it is "current" or empty, use `git diff` against the base branch. If it is a branch name, diff against main.
+1. **Identify the PR or diff.** If `$ARGUMENTS` is a PR number, call `mcp__github__pull_request_read(method: "get", ...)` for the metadata (base/head refs, title, body) and `mcp__github__pull_request_read(method: "get_diff", ...)` for the diff. If it is "current" or empty, use `git diff` against the base branch. If it is a branch name, diff against main.
 
 2. **Read the changed files list.** Run `git diff <base>..HEAD --name-only` to understand the scope.
 

@@ -1,8 +1,8 @@
 ---
 name: tech-debt
-description: Scan a codebase for technical debt - outdated deps, test gaps, code churn hotspots, TODO/HACK markers, recurring Sentry errors, and missing Linear tickets. Produces a prioritized report and optionally creates issues.
+description: Scan a codebase for technical debt - outdated deps, test gaps, code churn hotspots, TODO/HACK markers, recurring Sentry errors, and missing GitHub issues. Produces a prioritized report and optionally creates issues.
 user_invocable: true
-allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write, mcp__sentry__search_issues, mcp__sentry__get_sentry_resource, mcp__linear-server__list_issues, mcp__linear-server__save_issue, mcp__linear-server__get_issue
+allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write, mcp__sentry__search_issues, mcp__sentry__get_sentry_resource, mcp__github__search_issues, mcp__github__issue_write
 argument-hint: "[path to project, e.g., the repo root or a sub-project directory]"
 ---
 
@@ -76,13 +76,13 @@ Look for:
 
 This scan is best-effort - false positives are common. Flag findings as "potential" rather than definitive.
 
-## Step 3: Cross-reference with Linear
+## Step 3: Cross-reference with GitHub issues
 
-Check if existing Linear issues already cover the findings:
+Check if existing GitHub issues already cover the findings:
 
-- Search Linear for issues with labels like "tech-debt", "refactor", "maintenance", or "bug"
+- `mcp__github__search_issues(query: "repo:<owner>/<repo> is:issue is:open label:tech-debt,refactor,maintenance,bug")`
 - Match findings against existing issues by file path or keyword
-- Mark findings as "already tracked" if a Linear issue exists
+- Mark findings as "already tracked" if a matching issue exists
 
 This avoids creating duplicate tickets.
 
@@ -119,7 +119,7 @@ Project: [name] | Date: [today] | Scope: [what was scanned]
 | P2       | Z     |
 | P3       | W     |
 
-Already tracked in Linear: N items
+Already tracked on GitHub: N items
 
 ## P0 - Fix Now
 ### [Category] Finding title
@@ -127,7 +127,7 @@ Already tracked in Linear: N items
 - **Detail**: what and why this is debt
 - **Impact**: what breaks or degrades
 - **Effort**: S/M/L
-- **Linear**: <TEAM>-XXX (if already tracked) or "not tracked"
+- **GitHub**: #XXX (if already tracked) or "not tracked"
 
 ## P1 - This Sprint
 ...
@@ -147,7 +147,7 @@ Already tracked in Linear: N items
 
 After presenting the report, offer:
 
-1. **Create Linear issues** - one per P0/P1 finding, with full context in the body
+1. **Create GitHub issues** - one per P0/P1 finding, with full context in the body
 2. **Deep dive** - investigate a specific finding in detail (read the code, propose a fix approach)
 3. **Export** - save the report to `docs/tech-debt-report-YYYY-MM-DD.md`
 4. **Done** - report only, no further action
@@ -156,7 +156,7 @@ After presenting the report, offer:
 
 - **Scan first, judge second.** Collect data before prioritizing. Do not skip scans because "the codebase looks fine."
 - **Cross-reference everything.** A finding that appears in multiple scans is more important than one that appears in only one.
-- **Respect existing tracking.** If a Linear issue already exists, do not create a duplicate. Link to it instead.
+- **Respect existing tracking.** If a GitHub issue already exists, do not create a duplicate. Link to it instead.
 - **Be honest about effort.** S = hours, M = days, L = week+. Do not underestimate.
 - **Do not fix anything.** This skill is for discovery and prioritization. Use `/fix` or `/code-tdd` for the actual work.
 - **Do not use em-dashes.** Use hyphens, commas, or parentheses instead.

@@ -1,14 +1,14 @@
 ---
 name: autopilot
-description: Run the full issue-to-PR workflow autonomously across a list of Linear issues or a Linear filter. Orchestrates next-issue, code-tdd, code-review, architecture-review, implement-review, qa, and create-pr, plus a post-PR bot-comment polling window. After each issue it runs /compact and re-invokes itself from saved state until the queue drains.
+description: Run the full issue-to-PR workflow autonomously across a list of GitHub issues or an issue filter. Orchestrates next-issue, code-tdd, code-review, architecture-review, implement-review, qa, and create-pr, plus a post-PR bot-comment polling window. After each issue it runs /compact and re-invokes itself from saved state until the queue drains.
 user_invocable: true
-allowed-tools: Bash(*), Read, Grep, Glob, Edit, Write, Skill, mcp__linear-server__list_issues, mcp__linear-server__get_issue
-argument-hint: "[<TEAM>-123 <TEAM>-124 ... | --epic <TEAM>-X | --assignee me --state backlog | --resume]"
+allowed-tools: Bash(git *), Read, Grep, Glob, Edit, Write, Skill, mcp__github__list_issues, mcp__github__search_issues, mcp__github__issue_read, mcp__github__pull_request_read
+argument-hint: "[#123 #124 ... | --parent #X | --assignee me --state open | --resume]"
 ---
 
 # Autopilot
 
-Thin orchestrator that runs the standard issue-to-PR workflow across many Linear issues without pausing for input. It persists queue state to a file so it survives `/compact`.
+Thin orchestrator that runs the standard issue-to-PR workflow across many GitHub issues without pausing for input. It persists queue state to a file so it survives `/compact`.
 
 Argument: `$ARGUMENTS`
 
@@ -29,10 +29,10 @@ Path: `tasks/autopilot/state.json`. Shape:
 ```json
 {
   "started_at": "2026-04-18T10:22:00Z",
-  "queue": ["<TEAM>-4310", "<TEAM>-4311", "<TEAM>-4312"],
-  "blocked_by": { "<TEAM>-4311": ["<TEAM>-4310"] },
+  "queue": ["#4310", "#4311", "#4312"],
+  "blocked_by": { "#4311": ["#4310"] },
   "results": {
-    "<TEAM>-4310": { "status": "shipped", "pr_url": "..." }
+    "#4310": { "status": "shipped", "pr_url": "..." }
   }
 }
 ```
@@ -53,14 +53,14 @@ Read `tasks/autopilot/state.json`.
 
 Parse `$ARGUMENTS`:
 
-- Explicit list: `<TEAM>-4310 <TEAM>-4311 ...` in given order.
-- `--epic <TEAM>-X`: `list_issues(parentId, state: "backlog", orderBy: "createdAt")`.
-- Other filters (`--assignee me`, `--state ...`, `--label ...`, `--project ...`): pass through to `list_issues`.
-- Empty: same as `--assignee me --state backlog`.
+- Explicit list: `#4310 #4311 ...` in given order.
+- `--parent #X`: `mcp__github__issue_read(method: "get_sub_issues", owner, repo, issue_number: X)`.
+- Other filters (`--assignee me`, `--state ...`, `--label ...`, `--milestone ...`): translate into a `mcp__github__search_issues` query, e.g. `repo:<owner>/<repo> is:issue is:open assignee:@me`.
+- Empty: same as `--assignee me --state open`.
 
-For each issue, call `get_issue(id, includeRelations: true)`. Build `blocked_by`. Drop issues whose blockers are neither in the queue nor already merged/branched (report them).
+For each issue, call `mcp__github__issue_read(method: "get", ...)` to read title and body. GitHub has no first-class blocker relation, so build `blocked_by` by scanning each issue body for `Blocked by #N` / `Depends on #N` mentions. Drop issues whose blockers are neither in the queue nor already merged/branched (report them).
 
-Write the state file. Print the resolved queue (IDs, titles, blockers) so the user can scan it. Do not wait for input.
+Write the state file. Print the resolved queue (numbers, titles, blockers) so the user can scan it. Do not wait for input.
 
 ## Step 3: Pick the next eligible issue
 
@@ -70,7 +70,7 @@ Find the first item whose `status` is `pending` or `in-progress` and whose `bloc
 
 If nothing is eligible, go to Step 10.
 
-Mark the picked issue `in-progress`, persist, and continue. Call it `<ISSUE>`.
+Mark the picked issue `in-progress`, persist, and continue. Call it `<ISSUE>` (e.g., `#4310`).
 
 ## Step 4: Run the per-issue pipeline
 
@@ -85,7 +85,7 @@ Invoke each skill via the `Skill` tool in order. Do not duplicate their logic he
 | 4e | `qa` | current branch | only if diff touches frontend (templates, Alpine.js, CSS, rendering view fns) or adds/changes an API endpoint handler | if QA produces blocking findings, loop back to 4d at most once; a second loop takes this issue to WIP path |
 | 4f | `create-pr` | (no arg; it reads the current branch) | always | abort entirely on unresolved rebase conflict or push failure |
 
-After 4a, `cd ~/work/code/worktrees/com-<N>/` so the rest of the pipeline runs inside the worktree.
+After 4a, `cd ~/work/code/worktrees/issue-<N>/` so the rest of the pipeline runs inside the worktree.
 
 Between steps, update `state.json` with the current stage so a `/compact` crash can resume.
 
@@ -115,15 +115,15 @@ If Step 4b or 4e decides the issue cannot reach a clean state:
 Parameters: window = 120s, interval = 10s, max cycles = 3.
 
 ```
-pr=<PR number from create-pr>
-baseline_comments = gh api repos/{o}/{r}/pulls/$pr/comments --jq '[.[].id]'
-baseline_reviews  = gh api repos/{o}/{r}/pulls/$pr/reviews  --jq '[.[].id]'
+pr = <PR number from create-pr>
+baseline_comments = mcp__github__pull_request_read(method: "get_review_comments", owner, repo, pullNumber: pr) -> collect comment ids
+baseline_reviews  = mcp__github__pull_request_read(method: "get_reviews", owner, repo, pullNumber: pr) -> collect review ids
 deadline = now + 120s
 cycles = 0
 
 while now < deadline:
     sleep 10s
-    new = current comments/reviews minus baseline, filtered to bots only
+    new = current comments/reviews (re-fetch via the same two calls) minus baseline, filtered to bots only
     if new is empty: continue
     cycles += 1
     if cycles > 3:
@@ -168,8 +168,8 @@ Print:
 Autopilot finished.
   Shipped:    <n>  (PR URLs)
   WIP:        <n>  (PR URLs + stage where it stopped)
-  Needs attn: <n>  (issue IDs + notes)
-  Skipped:    <n>  (issue IDs - dependent on a failure)
+  Needs attn: <n>  (issue numbers + notes)
+  Skipped:    <n>  (issue numbers - dependent on a failure)
 ```
 
 Archive `tasks/autopilot/state.json` to `tasks/autopilot/state.<iso>.json` as the run log. Do not delete.
@@ -193,7 +193,7 @@ jq '. + {"abort": true}' tasks/autopilot/state.json > /tmp/s.json && mv /tmp/s.j
 | Rebase conflict in `create-pr` that can't be auto-resolved | stop autopilot entirely |
 | Push failure | stop autopilot entirely |
 | Bot polling > 3 cycles | ship as normal, add note, continue |
-| Linear/GitHub API error | retry once after 30s, else stop |
+| GitHub API error | retry once after 30s, else stop |
 | State file `"abort": true` | stop at next Step 3 check |
 
 ## Rules

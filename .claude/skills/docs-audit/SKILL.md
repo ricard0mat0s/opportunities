@@ -1,8 +1,8 @@
 ---
 name: docs-audit
-description: Audit a project's documentation (requirements, design specs, plans, index, glossary) for inconsistencies and produce a report with suggested fixes. For each finding, cross-checks Linear (source of truth), then the code (how the behavior is actually handled), then sibling docs that touch the same concept, to surface tensions you would otherwise only find at integration time. Never edits docs except `docs/glossary.md` when terminology is resolved. Trigger on explicit audit intent only ("audit the docs", "find contradictions", "are the docs consistent"); do **not** trigger on generic verbs like "check the docs" or "read the docs", which usually mean a lookup, not a consistency sweep.
+description: Audit a project's documentation (requirements, design specs, plans, index, glossary) for inconsistencies and produce a report with suggested fixes. For each finding, cross-checks GitHub issues (source of truth), then the code (how the behavior is actually handled), then sibling docs that touch the same concept, to surface tensions you would otherwise only find at integration time. Never edits docs except `docs/glossary.md` when terminology is resolved. Trigger on explicit audit intent only ("audit the docs", "find contradictions", "are the docs consistent"); do **not** trigger on generic verbs like "check the docs" or "read the docs", which usually mean a lookup, not a consistency sweep.
 user_invocable: true
-allowed-tools: Bash(git *), Bash(ls *), Bash(find *), Read, Grep, Glob, Agent, AskUserQuestion, Write, mcp__linear-server__*, LSP
+allowed-tools: Bash(git *), Bash(ls *), Bash(find *), Read, Grep, Glob, Agent, AskUserQuestion, Write, mcp__github__issue_read, mcp__github__search_issues, LSP
 argument-hint: "<project path> (omit to ask)"
 ---
 
@@ -16,7 +16,7 @@ Argument: `$ARGUMENTS`
 Trigger only when the user clearly wants a consistency sweep, not a lookup. Examples that should trigger:
 - "audit the docs", "run a docs audit", "do a docs sanity check"
 - "find contradictions in the docs", "are the docs consistent"
-- "the docs drifted - find the gaps", "check the docs against Linear"
+- "the docs drifted - find the gaps", "check the docs against GitHub issues"
 
 Examples that should **not** trigger (these are lookups, use normal Read/Grep):
 - "check the docs to see how X works"
@@ -36,15 +36,15 @@ If you are unsure, ask the user before invoking.
    - Index: `docs/index.md`.
    - Glossary: `docs/glossary.md` (no underscore - it is a first-class doc).
    - Runbooks: `docs/runbooks/*.md`.
-4. For every doc, record: numbered requirements (`^\d+\.` or `**REQ N.**`), design decisions (`### D<n>`), cross-references (`REQ N`, `D<n>`, file paths, `<TEAM>-XXXX`), the "Last updated" header, any linked Linear issue.
+4. For every doc, record: numbered requirements (`^\d+\.` or `**REQ N.**`), design decisions (`### D<n>`), cross-references (`REQ N`, `D<n>`, file paths, `#XXXX`), the "Last updated" header, any linked GitHub issue.
 
 ## Step 2: For each finding, follow the same path
 
 This is the heart of the skill. **Do not shortcut.** The cross-system tensions only surface when all three perspectives are consulted in order.
 
-1. **Linear first.** Linear is the source of truth. For each REQ or decision under suspicion, fetch the corresponding issue (via the `Linear issue:` line, a `<TEAM>-XXXX` mention, or a title search). Quote the authoritative text.
+1. **GitHub issue first.** The linked GitHub issue is the source of truth. For each REQ or decision under suspicion, fetch the corresponding issue (via the `GitHub issue:` line, a `#XXXX` mention, or `mcp__github__search_issues` on the title) using `mcp__github__issue_read(method: "get", ...)`. Quote the authoritative text.
 2. **Code second.** Use LSP (`findReferences`, `goToDefinition`, `workspaceSymbol`) to find how the behavior is actually implemented. Read the call site that decides the behavior, not just the symbol declaration. Fall back to grep with a flagged note if LSP is unavailable for the language.
-3. **Sibling docs third.** Find every other doc that mentions the same entity, REQ, or decision. Compare what they say. The most valuable findings are not "the doc disagrees with Linear" but "doc A and doc B each match the code in isolation, but they describe the same operation at different layers without acknowledging each other, and a reader of either doc alone will get it wrong."
+3. **Sibling docs third.** Find every other doc that mentions the same entity, REQ, or decision. Compare what they say. The most valuable findings are not "the doc disagrees with the GitHub issue" but "doc A and doc B each match the code in isolation, but they describe the same operation at different layers without acknowledging each other, and a reader of either doc alone will get it wrong."
 
 ## Step 3: Run checks
 
@@ -60,12 +60,12 @@ Run these in order. Each produces zero or more findings.
 - REQ cited in design or plan but absent from the requirements file. Severity: critical.
 - `D<n>` cited in plan but absent from the design file. Severity: critical.
 - Index link points at a non-existent file. Severity: critical. Auto-fixable: drop the line.
-- A plan in `plans/` whose Linear issue is `Done`. Severity: hint. Suggestion: graduate durable content into permanent docs (architecture / decisions / gotchas / key-files) per `session-distill`.
+- A plan in `plans/` whose GitHub issue is closed. Severity: hint. Suggestion: graduate durable content into permanent docs (architecture / decisions / gotchas / key-files) per `session-distill`.
 
-### Linear alignment
-- For each REQ in the doc, fetch the Linear issue. If meaning differs, Linear wins; flag the doc as drifted.
-- If a Linear issue lists REQ N but the doc has different text at REQ N, flag (this happens when docs are hand-edited and lose sync).
-- If the Linear MCP is unreachable, skip this category and note "Linear unreachable" in the report header.
+### GitHub issue alignment
+- For each REQ in the doc, fetch the GitHub issue. If meaning differs, the issue wins; flag the doc as drifted.
+- If a GitHub issue lists REQ N but the doc has different text at REQ N, flag (this happens when docs are hand-edited and lose sync).
+- If the GitHub MCP tools are unreachable, skip this category and note "GitHub unreachable" in the report header.
 
 ### Code alignment and cross-system tension (highest value)
 For each REQ that names a domain entity (class, table, column, function, env var, agent slug, file path):
@@ -95,7 +95,7 @@ When the user resolves an ambiguous term during the run, append to `docs/glossar
 ## <term>
 - Canonical: `<canonical form>`
 - Variants seen: `<variant>`, `<variant>`
-- Source of truth: <code path | doc | Linear issue>
+- Source of truth: <code path | doc | GitHub issue>
 - Catalogued: YYYY-MM-DD
 ```
 
@@ -107,7 +107,7 @@ Write to `<project>/docs/audits/YYYY-MM-DD-audit.md`. Create the `audits/` direc
 
 The report has four sections, in order:
 
-1. **Summary** - one line with counts by severity, plus "Linear unreachable" or "LSP unavailable" notes if relevant.
+1. **Summary** - one line with counts by severity, plus "GitHub unreachable" or "LSP unavailable" notes if relevant.
 2. **Findings** - grouped by severity (critical, then warning, then hint).
 3. **Open questions** - anything the skill needed to ask but could not resolve.
 4. **Auto-fixable summary** - a flat list of titles + `file:line` for every finding marked `Auto-fixable: yes`, so the user can apply them in bulk.
@@ -118,7 +118,7 @@ Each finding is one block. Keep it under ~150 words.
 ## F<n> [<severity>] <title>
 - **Where:** <file:line>(, more)
 - **Truth:**
-  - Linear: <quote / "not found" / "unreachable">
+  - GitHub issue: <quote / "not found" / "unreachable">
   - Code: <file:line - one-line summary / "no relevant code">
 - **Conflict:** <other doc/code that disagrees, if any>
 - **Suggested fix:** <imperative one-liner>
@@ -127,7 +127,7 @@ Each finding is one block. Keep it under ~150 words.
 
 ### Severity
 
-- **critical** - silently broken: numbering scrambled, cross-reference points at a non-existent target, REQ text contradicts Linear or code, two docs disagree on a data shape.
+- **critical** - silently broken: numbering scrambled, cross-reference points at a non-existent target, REQ text contradicts the GitHub issue or code, two docs disagree on a data shape.
 - **warning** - reader will be confused: terminology drift, contradiction across two docs that the code resolves but the docs do not, missing "Last updated".
 - **hint** - low-impact: modal verbs mixed, plan describing finished work, optional metadata missing.
 
@@ -135,7 +135,7 @@ Each finding is one block. Keep it under ~150 words.
 - Edit requirements, design, plan, runbook, code, or index files.
 - Renumber anything.
 - Delete files.
-- Touch Linear (no comments, no status changes).
+- Touch GitHub issues (no comments, no status changes).
 - Open PRs.
 - Mark anything `Auto-fixable: yes` that requires judgment (e.g. resolving a contradiction). Auto-fixable means a script could safely apply the change without human review.
 

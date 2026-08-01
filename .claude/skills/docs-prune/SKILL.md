@@ -36,7 +36,7 @@ If unsure, ask once before invoking.
 
 ## What this skill does NOT do
 
-- Does not edit requirements, design specs, plans, or runbooks **content** when those files map 1:1 to a Linear issue or feature spec - those are contracts. It only removes superseded ones, fixes broken cross-references inside them, and proposes terser wording for clearly redundant prose. Spec semantics stay verbatim unless the user explicitly says "rewrite for brevity".
+- Does not edit requirements, design specs, plans, or runbooks **content** when those files map 1:1 to a GitHub issue or feature spec - those are contracts. It only removes superseded ones, fixes broken cross-references inside them, and proposes terser wording for clearly redundant prose. Spec semantics stay verbatim unless the user explicitly says "rewrite for brevity".
 - Does not consolidate `docs/map/` leaves into different concepts. The map's structure is owned by the `project-map` skill. This skill only trims wording inside leaves and removes dead cross-references.
 - Does not invent new structure. If the docs need restructuring beyond what falls out of dedup, surface the suggestion in the report and let the user decide.
 
@@ -54,7 +54,7 @@ Walk `docs/` recursively. For every `.md` and `.feature` file, record:
 - Token estimate (`wc -w` divided by ~0.75; rough is fine - this skill optimizes the relative ranking, not absolute counts)
 - First-line title
 - Section headings
-- Outbound links (relative paths and Linear identifiers like `<TEAM>-####`)
+- Outbound links (relative paths and GitHub issue references like `#####`)
 - Inbound link count (how many other docs reference this file by path)
 - Last-modified date from `git log -1 --format=%ci -- <path>` (use to spot stale files)
 
@@ -92,7 +92,7 @@ Mark a file for deletion if **any** of these hold:
 - File is fully superseded by another (e.g. old `key-files.md` after `docs/map/` exists - this is a real case in this repo).
 - File contains only "TODO" / "WIP" / "this section is empty" content.
 - File is a session note that has been distilled into permanent docs already.
-- File is an obsolete plan (status closed, Linear issue done) AND the design/requirements that replace it exist.
+- File is an obsolete plan (status closed, GitHub issue done) AND the design/requirements that replace it exist.
 
 Mark for **archive** rather than delete when the file is a historical record the user might want (decisions.md is usually like this; superseded but valuable). Archive target: `docs/archive/<original-path>`.
 
@@ -108,7 +108,7 @@ For every doc, scan for:
 
 - **Onboarding asides**: "you might wonder...", "the reason we did this is...", "this is great because..." -> cut.
 - **Restating tables in prose**: a paragraph that re-narrates a bullet list or table immediately above or below -> cut the prose.
-- **Forecasting**: "we plan to...", "future work will...", "eventually we will..." unless tied to a Linear issue or `## Open questions` block -> cut.
+- **Forecasting**: "we plan to...", "future work will...", "eventually we will..." unless tied to a GitHub issue or `## Open questions` block -> cut.
 - **Step-by-step prose where a fragment list works**: convert paragraphs to bullet fragments where possible.
 - **Em-dashes** (project rule: hyphens only). Project rule: use `-` not `—`.
 - **Conventional Commits / git rules / no em-dash rules** repeated in every doc -> centralize in `CLAUDE.md` and remove from `docs/`.
@@ -122,7 +122,7 @@ For every link in every doc:
 - If target file is missing -> mark for fix or removal.
 - If target heading is missing (`other.md#section`) -> mark for fix.
 - If link text differs sharply from target's actual title -> propose link-text update.
-- If the link is to an external service (Linear / GitHub PR / Slack) -> leave it alone (cannot resolve here).
+- If the link is to an external service (GitHub issue / PR / Slack) -> leave it alone (cannot resolve here).
 
 ## Step 7: Build the change plan
 
@@ -209,7 +209,7 @@ That's it. Do not write a longer report; the diff itself is the artifact.
 | Not in a git repo | Abort with clear error |
 | Dirty working tree | Ask user once before continuing |
 | `<project>/docs/` missing | Abort |
-| Spec doc proposed for trim that maps 1:1 to Linear | Skip it; only propose `delete-if-superseded`, never `rewrite content` |
+| Spec doc proposed for trim that maps 1:1 to a GitHub issue | Skip it; only propose `delete-if-superseded`, never `rewrite content` |
 | File proposed for delete is referenced from `CLAUDE.md` or `agents/*.yml` | Drop the proposal automatically and note it in the summary |
 | Dedup target file does not exist yet | Either create it (only if the user opts in via the change plan) or downgrade to "trim duplicates without consolidation" |
 | User declines all proposals | Exit cleanly; report still serves as a checklist for manual work |

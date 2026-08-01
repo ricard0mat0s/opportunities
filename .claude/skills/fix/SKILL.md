@@ -1,9 +1,9 @@
 ---
 name: fix
-description: Use when a bug is reported from any source - Sentry alert, Linear issue, pasted stacktrace, or plain description. Diagnoses root cause with three-level cause analysis, writes a regression test, and fixes using RED-GREEN-REFACTOR.
+description: Use when a bug is reported from any source - Sentry alert, GitHub issue, pasted stacktrace, or plain description. Diagnoses root cause with three-level cause analysis, writes a regression test, and fixes using RED-GREEN-REFACTOR.
 user_invocable: true
-allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write, mcp__linear-server__get_issue, mcp__linear-server__save_issue, mcp__linear-server__list_issues, mcp__linear-server__search_documentation
-argument-hint: "[Sentry URL, Linear issue (<TEAM>-123), pasted stacktrace, or plain description of the bug]"
+allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write, mcp__github__issue_read, mcp__github__issue_write, mcp__github__search_issues
+argument-hint: "[Sentry URL, GitHub issue (#123), pasted stacktrace, or plain description of the bug]"
 ---
 
 # Fix
@@ -21,7 +21,7 @@ No fix without a failing test first. If you wrote fix code before the test, dele
 `$ARGUMENTS` can contain any combination of:
 
 - **Sentry issue URL** - fetch full details via Sentry MCP (stacktrace, error message, breadcrumbs, tags, environment, release, frequency, affected user count)
-- **Linear issue identifier** (e.g., `<TEAM>-123`) - fetch issue details via Linear MCP
+- **GitHub issue number** (e.g., `#123`) - fetch issue details via `mcp__github__issue_read(method: "get", ...)`
 - **Pasted stacktrace** - extract file paths, line numbers, error message
 - **Plain text description** - use as starting context
 
@@ -98,7 +98,7 @@ Estimate the fix size. If it would require more than 800 lines of code changes:
 
 1. Stop.
 2. Explain why the fix is large.
-3. Create Linear issues to break the work into smaller pieces.
+3. Create GitHub issues (via `mcp__github__issue_write`) to break the work into smaller pieces.
 4. Do not implement the fix directly.
 
 If the fix is within bounds, proceed.
@@ -222,7 +222,7 @@ If you catch yourself thinking:
 - **Three-level cause analysis before any code.** Direct cause, root cause, contributing factors.
 - **One fix at a time.** Do not bundle fixes for other bugs you noticed.
 - **Choose the right test type.** Unit, integration, or BDD - whichever gives the most meaningful assertion.
-- **Size gate at 800 LOC.** If the fix is larger, create Linear issues instead.
+- **Size gate at 800 LOC.** If the fix is larger, create GitHub issues instead.
 - **Sentry lifecycle.** Assign at start, resolve and comment at end.
 - **Preventive measures are not optional.** Address contributing factors.
 - **Update docs when they contributed to the bug.** Requirements and design docs that are wrong or incomplete get fixed.

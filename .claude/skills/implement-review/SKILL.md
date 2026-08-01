@@ -2,7 +2,7 @@
 name: implement-review
 description: Use when PR review comments need to be analyzed for validity, evaluated for interest, and implemented with test-first approach where the change alters behavior
 user_invocable: true
-allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write
+allowed-tools: Bash(git *), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write, mcp__github__pull_request_read, mcp__github__list_pull_requests, mcp__github__add_reply_to_pull_request_comment, mcp__github__pull_request_review_write
 argument-hint: "[PR number, branch name, or pasted review comments]"
 ---
 
@@ -23,20 +23,20 @@ Argument: `$ARGUMENTS`
 
 When no argument is provided (or it is "current"), detect the current branch's PR:
 
-```bash
-gh pr view --json number,title,body,baseRefName,headRefName,url
+```
+mcp__github__list_pull_requests(owner, repo, head: "<owner>:<current-branch>", state: "all", fields: ["number","title","body","state","base","head"])
 ```
 
 If no PR exists for the current branch, tell the user and stop.
 
 For PR-based input:
 
-1. Get PR context: `gh pr view $PR --json number,title,body,baseRefName,headRefName,url`
-2. Fetch inline review comments: `gh api repos/{owner}/{repo}/pulls/{number}/comments`
-3. Fetch PR-level reviews: `gh api repos/{owner}/{repo}/pulls/{number}/reviews`
-4. Read the diff: `gh pr diff $PR`
+1. Get PR context: `mcp__github__pull_request_read(method: "get", owner, repo, pullNumber: $PR)`
+2. Fetch review threads (grouped, with thread IDs and resolved state): `mcp__github__pull_request_read(method: "get_review_comments", owner, repo, pullNumber: $PR)`
+3. Fetch PR-level reviews: `mcp__github__pull_request_read(method: "get_reviews", owner, repo, pullNumber: $PR)`
+4. Read the diff: `mcp__github__pull_request_read(method: "get_diff", owner, repo, pullNumber: $PR)`
 
-Collect all comments into a single list. For each comment, note the file, line, the reviewer's suggestion, and the **comment ID** (needed for replying later).
+Collect all comments into a single list. For each comment, note the file, line, the reviewer's suggestion, the **comment ID** (needed for replying later), and the **thread ID** (needed for resolving later, already returned by `get_review_comments`).
 
 ## Step 2: Understand the context
 
@@ -180,42 +180,22 @@ For each comment, decide whether to reply based on the resolution rules from Ste
 
 Post replies using:
 
-```bash
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies -X POST -f body="<reply>"
+```
+mcp__github__add_reply_to_pull_request_comment(owner, repo, pullNumber: $PR, commentId: <comment_id>, body: "<reply>")
 ```
 
 ### Resolve threads
 
-After replying, resolve all threads that are done (implemented, or bot-disagree). First, fetch the thread IDs:
+After replying, resolve all threads that are done (implemented, or bot-disagree). The thread IDs were already captured in Step 1 from `get_review_comments`; if you need to re-fetch them:
 
-```bash
-gh api graphql -f query='
-{
-  repository(owner: "{owner}", name: "{repo}") {
-    pullRequest(number: {pr_number}) {
-      reviewThreads(first: 50) {
-        nodes {
-          id
-          isResolved
-          comments(first: 1) {
-            nodes { databaseId }
-          }
-        }
-      }
-    }
-  }
-}'
+```
+mcp__github__pull_request_read(method: "get_review_comments", owner, repo, pullNumber: $PR)
 ```
 
-Match each thread to its comment ID, then resolve it:
+This returns each thread's node ID plus `isResolved`. Resolve a thread with:
 
-```bash
-gh api graphql -f query='
-mutation {
-  resolveReviewThread(input: {threadId: "<thread_id>"}) {
-    thread { isResolved }
-  }
-}'
+```
+mcp__github__pull_request_review_write(method: "resolve_thread", owner, repo, pullNumber: $PR, threadId: "<thread_id>")
 ```
 
 **When to resolve:**
@@ -265,8 +245,8 @@ The skill is complete only when every item below is true. Run through this list 
 - [ ] Every testable change has a test with a `# Review: <reason>` traceability comment, and the tests pass.
 - [ ] All changes committed on the PR branch.
 - [ ] Branch rebased onto the base branch and pushed with `--force-with-lease`.
-- [ ] Every comment has a reply, EXCEPT bot-disagree-nonsensical (silent resolve is fine for those). Check with `gh api repos/{owner}/{repo}/pulls/{pr}/comments` and diff against the comment IDs you evaluated in Step 3.
-- [ ] Every thread that is done is resolved via the GraphQL `resolveReviewThread` mutation, except human-disagree/skip threads (left open for human discussion). Verify with the `reviewThreads` GraphQL query and check `isResolved` is true for each target thread.
+- [ ] Every comment has a reply, EXCEPT bot-disagree-nonsensical (silent resolve is fine for those). Check with `mcp__github__pull_request_read(method: "get_review_comments", ...)` and diff against the comment IDs you evaluated in Step 3.
+- [ ] Every thread that is done is resolved via `mcp__github__pull_request_review_write(method: "resolve_thread", ...)`, except human-disagree/skip threads (left open for human discussion). Verify with `mcp__github__pull_request_read(method: "get_review_comments", ...)` and check `isResolved` is true for each target thread.
 - [ ] Summary reported to the user: what was implemented, what was skipped, what is left open for discussion, and confirmation that replies and resolves are posted.
 
 If you are unsure whether you completed a step, re-run the verification query. Do not assume. "I think I replied to all of them" is the failure mode this checklist exists to prevent.

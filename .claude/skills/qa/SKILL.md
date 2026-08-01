@@ -2,7 +2,7 @@
 name: qa
 description: Run QA on a PR or branch - execute tests, verify test quality, check requirements coverage, explore the UI with Playwright, and test API endpoints with curl. It is aggressive with edge cases and accessibility.
 user_invocable: true
-allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write
+allowed-tools: Bash(*), Read, Grep, Glob, Agent, AskUserQuestion, Edit, Write, mcp__github__pull_request_read
 argument-hint: "[PR number, branch name, or 'current' to QA the current diff]"
 ---
 
@@ -14,7 +14,7 @@ Argument: `$ARGUMENTS`
 
 ## Step 1: Identify the scope
 
-1. **Identify the PR or diff.** If `$ARGUMENTS` is a PR number, run `gh pr view $ARGUMENTS --json baseRefName,headRefName,title,body` and `gh pr diff $ARGUMENTS`. If it is "current" or empty, use `git diff` against the base branch.
+1. **Identify the PR or diff.** If `$ARGUMENTS` is a PR number, call `mcp__github__pull_request_read(method: "get", ...)` for the metadata (base/head refs, title, body) and `mcp__github__pull_request_read(method: "get_diff", ...)` for the diff. If it is "current" or empty, use `git diff` against the base branch.
 2. **List changed files.** Run `git diff <base>..HEAD --name-only`.
 3. **Read requirements and plan** (if available). Check `docs/requirements/` and `docs/plans/` for files related to this work. These tell you what the code is supposed to do, which you will verify in all phases.
 4. **Understand what changed.** Read the diff and the changed files. Categorize the changes:
