@@ -15,6 +15,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
+from google.genai import errors
+
 from src.config import AppConfig, ConfigurationError, load_config
 from src.mailer import MailerError, markdown_to_html, send_report_email
 from src.main import run_pipeline
@@ -85,6 +87,14 @@ def test_load_config_success(mock_env: None) -> None:
     assert cfg.smtp_password == FAKE_SMTP_PASS
     assert cfg.recipient_email == FAKE_RECIPIENT
     assert cfg.smtp_port == 465
+
+
+def test_load_config_strips_spaces_from_app_password(
+    monkeypatch: pytest.MonkeyPatch, mock_env: None
+) -> None:
+    monkeypatch.setenv("SMTP_PASSWORD", "abcd efgh ijkl mnop")
+    cfg = load_config(load_env_file=False)
+    assert cfg.smtp_password == "abcdefghijklmnop"
 
 
 def test_config_repr_redacts_secrets(sample_config: AppConfig) -> None:
@@ -198,6 +208,32 @@ def test_generate_internship_report_uses_google_search_grounding(
     assert len(gen_config.tools) == 1
     assert gen_config.tools[0].google_search is not None
 
+    _assert_no_secret_leakage(caplog.text)
+
+
+@patch("src.search_agent.genai.Client")
+def test_generate_internship_report_fallback_on_quota_or_404(
+    mock_client_cls: MagicMock,
+    sample_config: AppConfig,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    mock_client = MagicMock()
+    quota_err = errors.ClientError(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED"}})
+    mock_client.models.generate_content.side_effect = [
+        quota_err,
+        SimpleNamespace(text=FAKE_REPORT_CONTENT),
+    ]
+    mock_client_cls.return_value = mock_client
+
+    with caplog.at_level(logging.INFO):
+        report = generate_internship_report(
+            sample_config,
+            "<untrusted_scraped_content>Intern role</untrusted_scraped_content>",
+        )
+
+    assert report == FAKE_REPORT_CONTENT
+    assert mock_client.models.generate_content.call_count == 2
+    assert "Primary grounded search unavailable (ClientError)" in caplog.text
     _assert_no_secret_leakage(caplog.text)
 
 

@@ -61,7 +61,7 @@ Copy `.env.example` to `.env` for local runs, or configure the following **GitHu
 | `SMTP_USER` | Yes | Sender Gmail address |
 | `SMTP_PASSWORD` | Yes | 16-character Gmail App Password |
 | `RECIPIENT_EMAIL` | Yes | Destination email address for the curated report |
-| `GEMINI_MODEL` | No | Defaults to `gemini-2.5-flash` |
+| `GEMINI_MODEL` | No | Defaults to `gemini-3.6-flash` |
 | `SMTP_HOST` | No | Defaults to `smtp.gmail.com` |
 | `SMTP_PORT` | No | Defaults to `465` (`SMTP_SSL`) |
 | `JINA_API_KEY` | No | Optional Jina Reader API key for higher rate limits |

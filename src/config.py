@@ -47,6 +47,9 @@ def get_logger(name: str = "internship_radar") -> logging.Logger:
     return logger
 
 
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
+
+
 @dataclass(frozen=True)
 class AppConfig:
     """Immutable application configuration with redacted representations."""
@@ -55,7 +58,7 @@ class AppConfig:
     smtp_user: str = field(repr=False)
     smtp_password: str = field(repr=False)
     recipient_email: str = field(repr=False)
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = DEFAULT_GEMINI_MODEL
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 465
     jina_api_key: Optional[str] = field(default=None, repr=False)
@@ -93,10 +96,13 @@ def load_config(load_env_file: bool = True) -> AppConfig:
 
     gemini_api_key = _require_env("GEMINI_API_KEY")
     smtp_user = _validate_email("SMTP_USER", _require_env("SMTP_USER"))
-    smtp_password = _require_env("SMTP_PASSWORD")
+    # Strip internal spaces often present when copying 16-char Gmail App Passwords
+    smtp_password = "".join(_require_env("SMTP_PASSWORD").split())
     recipient_email = _validate_email("RECIPIENT_EMAIL", _require_env("RECIPIENT_EMAIL"))
 
-    gemini_model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+    gemini_model = (
+        os.environ.get("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
+    )
     smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com").strip() or "smtp.gmail.com"
 
     raw_port = os.environ.get("SMTP_PORT", "465").strip()
