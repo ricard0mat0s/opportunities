@@ -29,8 +29,13 @@ from src.scraper import (
 from src.search_agent import (
     SYSTEM_INSTRUCTION,
     SearchAgentError,
+    build_snapshot_only_prompt,
     build_user_prompt,
     generate_internship_report,
+    is_closed_job_page,
+    is_sao_paulo_only_or_non_remote,
+    validate_and_filter_report,
+    verify_job_url,
 )
 
 FAKE_API_KEY = "AIzaSyFAKE_SECRET_KEY_999999"
@@ -352,3 +357,148 @@ def test_run_pipeline_end_to_end_zero_leakage(
     assert "Internship report synthesized successfully." in combined_output
     assert "Email dispatched successfully." in combined_output
     _assert_no_secret_leakage(combined_output)
+
+
+# ---------------------------------------------------------------------------
+# 6. Anti-Hallucination, São Paulo Filter & Target Board Enforcement Tests
+# ---------------------------------------------------------------------------
+
+
+def test_sanitize_untrusted_text_strips_noisy_images_and_preserves_tail_links() -> None:
+    noisy_carousel = "\n".join(
+        f"![Image {i}: Testimonial Photo](https://estagio.blip.ai/depoimentos/photo-{i}.webp)"
+        for i in range(200)
+    )
+    raw = (
+        "# Programa de Estágio Blip 2027\n"
+        f"{noisy_carousel}\n"
+        "Inscrições: 04/11 a 30/11 - 100% remoto\n"
+        "[Inscreva-se aqui](https://lxp.comunidade.ada.tech/programas/estagio-ia-first-blip/inscricao)"
+    )
+    cleaned = sanitize_untrusted_text(raw)
+    assert "![Image" not in cleaned
+    assert "https://lxp.comunidade.ada.tech/programas/estagio-ia-first-blip/inscricao" in cleaned
+
+
+def test_is_sao_paulo_only_or_non_remote_filtering() -> None:
+    assert is_sao_paulo_only_or_non_remote("Remote - São Paulo only") is True
+    assert is_sao_paulo_only_or_non_remote("Necessário residir em São Paulo") is True
+    assert is_sao_paulo_only_or_non_remote("Exclusivo para moradores de São Paulo") is True
+    assert is_sao_paulo_only_or_non_remote("Modelo de trabalho: Híbrido em São Paulo") is True
+
+    # Nationwide remote or FAQ questions should NOT be flagged as SP-only
+    assert is_sao_paulo_only_or_non_remote("100% remoto e horário flexível em todo o Brasil") is False
+    assert (
+        is_sao_paulo_only_or_non_remote(
+            "Modelo de Trabalho: Híbrido flexível em Osasco/SP ou Remoto demais localidades"
+        )
+        is False
+    )
+    assert is_sao_paulo_only_or_non_remote("Perguntas frequentes: Preciso morar em São Paulo?") is False
+
+
+@patch("src.search_agent.requests.get")
+def test_verify_job_url_rejects_ungrounded_404_and_closed_pages(mock_get: MagicMock) -> None:
+    allowed_urls = {"https://carreiras.ifood.com.br/gen-ai/"}
+    allowed_domains = {"gupy.io"}
+
+    # 1. Fabricated domain not in allowed_urls or allowed_domains -> rejected without HTTP needed
+    assert (
+        verify_job_url(
+            "https://fake-hallucinated-jobs.example.org/intern/123",
+            allowed_urls=allowed_urls,
+            allowed_domains=allowed_domains,
+        )
+        is False
+    )
+
+    # 2. Grounded domain returning HTTP 404 -> rejected
+    resp_404 = MagicMock(status_code=404, text="Not Found")
+    mock_get.return_value = resp_404
+    assert (
+        verify_job_url(
+            "https://empresa.gupy.io/jobs/999999",
+            allowed_urls=allowed_urls,
+            allowed_domains=allowed_domains,
+        )
+        is False
+    )
+
+    # 3. Grounded domain returning 200 but closed ("INSCRIÇÕES ENCERRADAS") -> rejected
+    resp_closed = MagicMock(status_code=200, text="✦ INSCRIÇÕES ENCERRADAS ✦ Programa iFuture")
+    mock_get.return_value = resp_closed
+    assert (
+        verify_job_url(
+            "https://empresa.gupy.io/jobs/888888",
+            allowed_urls=allowed_urls,
+            allowed_domains=allowed_domains,
+        )
+        is False
+    )
+
+    # 4. Grounded domain returning 200 with open 100% remote internship -> accepted
+    resp_open = MagicMock(status_code=200, text="Estágio Tech 100% Remoto - todo o Brasil")
+    mock_get.return_value = resp_open
+    assert (
+        verify_job_url(
+            "https://empresa.gupy.io/jobs/777777",
+            allowed_urls=allowed_urls,
+            allowed_domains=allowed_domains,
+        )
+        is True
+    )
+
+
+def test_validate_and_filter_report_strips_hallucinated_and_sp_only_jobs_and_enforces_target_boards() -> None:
+    scraped_snapshots = "\n\n".join(
+        [
+            wrap_untrusted_content(
+                "Ifood",
+                "Programa GenAI [Inscreva-se](https://carreiras.ifood.com.br/job/8901054002/)",
+            ),
+            wrap_untrusted_content(
+                "Nubank",
+                "Open positions at https://jobs.ashbyhq.com/nubank",
+            ),
+            wrap_untrusted_content(
+                "Blip",
+                "Estágio Tech.AI [Inscreva-se](https://lxp.comunidade.ada.tech/programas/estagio-ia-first-blip/inscricao)",
+            ),
+        ]
+    )
+
+    raw_report = (
+        "# Weekly Remote Tech Internship Radar\n\n"
+        "## Software Engineering & AI\n\n"
+        "- **Blip — Estágio Tech.AI** (100% Remote across Brazil) — Apply: https://lxp.comunidade.ada.tech/programas/estagio-ia-first-blip/inscricao\n\n"
+        "- **iFood — Estágio GenAI** (100% Remote outside Osasco/SP) — Apply: https://carreiras.ifood.com.br/job/8901054002/\n\n"
+        "- **FakeCorp — Backend Intern** (Brazil Remote) — Apply: https://hallucinated-nonexistent-corp.io/jobs/12345\n\n"
+        "- **SPOnlyCorp — Data Intern** (Remote - São Paulo only, necessário residir em São Paulo) — Apply: https://carreiras.ifood.com.br/job/8901054002/"
+    )
+
+    filtered = validate_and_filter_report(
+        report_markdown=raw_report,
+        scraped_snapshots=scraped_snapshots,
+        grounding_urls=set(),
+        grounding_domains=set(),
+        verify_http=False,
+    )
+
+    # Valid scraped target board internships are preserved
+    assert "https://lxp.comunidade.ada.tech/programas/estagio-ia-first-blip/inscricao" in filtered
+    assert "https://carreiras.ifood.com.br/job/8901054002/" in filtered
+    # Hallucinated URL is stripped
+    assert "hallucinated-nonexistent-corp.io" not in filtered
+    # São Paulo-only entry is stripped
+    assert "SPOnlyCorp" not in filtered
+    # Omitted target board (Nubank) is deterministically appended so it is never ignored
+    assert "Nubank" in filtered
+
+
+def test_build_snapshot_only_prompt_forbids_external_hallucination() -> None:
+    scraped = wrap_untrusted_content("Blip", "Programa de Estágio Blip")
+    prompt = build_snapshot_only_prompt(scraped, reference_date="2026-11-06")
+    assert "SNAPSHOT-ONLY EXTRACTION MODE" in prompt
+    assert "DO NOT generate, recall, guess, or invent" in prompt
+    assert "Blip" in prompt
+

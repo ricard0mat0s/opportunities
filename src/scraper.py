@@ -18,29 +18,53 @@ logger = get_logger()
 
 JINA_READER_BASE_URL = "https://r.jina.ai/"
 DEFAULT_TIMEOUT_SECONDS = 20
-MAX_CHARS_PER_BOARD = 12_000
+MAX_CHARS_PER_BOARD = 25_000
 
 DEFAULT_TARGET_BOARDS: Tuple[Tuple[str, str], ...] = (
-    ("Remotive Software Dev", "https://remotive.com/remote-jobs/software-dev"),
-    ("WeWorkRemotely Programming", "https://weworkremotely.com/categories/remote-programming-jobs"),
-    ("Himalayas Remote Internships", "https://himalayas.app/jobs/internships"),
-    (
-        "Simplify Tech Internships",
-        "https://github.com/SimplifyJobs/Summer2025-Internships/blob/dev/README.md",
-    ),
+    ("Ifood", "https://carreiras.ifood.com.br/gen-ai/"),
+    ("Nubank", "https://jobs.ashbyhq.com/nubank"),
+    ("Blip", "https://estagio.blip.ai/"),
 )
 
 _TAG_BREAKOUT_PATTERN = re.compile(
     r"</?\s*untrusted_scraped_content[^>]*>",
     re.IGNORECASE,
 )
+_MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[[^\]]*\]\([^)]+\)")
+_EMPTY_LINK_PATTERN = re.compile(r"\[\s*\]\([^)]+\)")
+_EXCESS_NEWLINES_PATTERN = re.compile(r"\n{3,}")
+_URL_PATTERN = re.compile(r"https?://[^\s)\]>\"'<]+")
+
+
+def extract_urls_from_text(text: str) -> set[str]:
+    """Extract all HTTP/HTTPS URLs present in a text block."""
+    if not text:
+        return set()
+    return {
+        match.rstrip(".,;:!?")
+        for match in _URL_PATTERN.findall(text)
+    }
+
+
+def extract_board_names_from_snapshots(scraped_snapshots: str) -> list[str]:
+    """Extract board source names from `<untrusted_scraped_content source="...">` blocks."""
+    if not scraped_snapshots:
+        return []
+    names = re.findall(
+        r'<untrusted_scraped_content\s+source="([^"]+)"\s*>',
+        scraped_snapshots,
+    )
+    return [n for n in names if n.lower() not in {"none", "external_snapshot"}]
 
 
 def sanitize_untrusted_text(raw_text: str, max_chars: int = MAX_CHARS_PER_BOARD) -> str:
-    """Neutralize XML sandbox breakout tags and cap content length."""
+    """Neutralize XML sandbox breakout tags, strip noisy image markdown, and cap content length."""
     if not raw_text:
         return ""
     cleaned = _TAG_BREAKOUT_PATTERN.sub("[REDACTED_TAG]", raw_text)
+    cleaned = _MARKDOWN_IMAGE_PATTERN.sub("", cleaned)
+    cleaned = _EMPTY_LINK_PATTERN.sub("", cleaned)
+    cleaned = _EXCESS_NEWLINES_PATTERN.sub("\n\n", cleaned)
     return cleaned.strip()[:max_chars]
 
 
